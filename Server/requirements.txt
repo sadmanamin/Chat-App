@@ -1,0 +1,4 @@
+pika
+python-socketio
+eventlet
+requests
