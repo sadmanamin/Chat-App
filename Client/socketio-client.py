@@ -70,17 +70,18 @@ def callback_for_received_message(ch, method, properties, body):
     body = json.loads(body)
     sender = body.get('sender')
     message = body.get('message')
-    users = body.get('users')
+    users = body.get('users','')
 
     try:
         if message == 'Session Ended':
             print("{} by {}\nMessage: ".format(message,sender),end="")
+        elif message is not None:
+            print("{} sent: {}\nReply: ".format(sender,message),end="")
         elif len(users) > 0:
-            print("Current Active Users:\n{}".format(users))
+            print("=====\nCurrent Active Users\n{}\n=====".format(users))
         elif len(users) == 0:
             print('No Active Users')
-        else:
-            print("{} sent: {}\nReply: ".format(sender,message),end="")
+
     
     except Exception as e:
         print(e)
@@ -105,7 +106,7 @@ def send_message(client_name):
     # Infinite loop for sending message that runs on a Thread
     
     while True:
-        sleep(1)
+        sleep(0.5)
         try:
             msg = input("Message: ")
             socket_client.emit(

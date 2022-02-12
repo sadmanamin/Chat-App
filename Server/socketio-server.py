@@ -103,7 +103,7 @@ def message_handler(sid, message):
         # New session starts
         
         idx = get_rr_number(sid)
-        receiver = sid_name_mapping.get(sid_list.get(idx))     
+        receiver = sid_name_mapping.get(sid_list[idx])     
         message_sessions[sender] = receiver
         message_sessions[receiver] = sender
         
