@@ -10,18 +10,32 @@ app = socketio.WSGIApp(
     sio, static_files={"/": {"content_type": "text/html", "filename": "index.html"}}
 )
 
-sid_name_mapping = {}
+sid_name_mapping, round_robin_for_sid, name_channel_map, message_sessions = {},{},{},{}
 sid_list = []
-round_robin_for_sid = {}
-name_channel_map = {}
-message_sessions = {}
 
 
 def create_rabbitmq_connection(queue):
-    connection = pika.BlockingConnection(pika.ConnectionParameters(RABBITMQ_HOST, heartbeat=600))
-    channel1 = connection.channel()
-    channel1.queue_declare(queue=queue)
-    return channel1
+    try:
+        connection = pika.BlockingConnection(
+            pika.ConnectionParameters(RABBITMQ_HOST, heartbeat=600)
+        )
+        channel1 = connection.channel()
+        channel1.queue_declare(queue=queue)
+        return channel1
+    
+    except Exception as e:
+        print(e)
+
+def publish_to_queue(client_name, payload):
+    try:
+        receiver_channel = name_channel_map.get(client_name)
+        receiver_channel.basic_publish(
+            exchange="", 
+            routing_key=client_name, 
+            body=json.dumps(payload)
+        )
+    except Exception as e:
+        print(e)
 
 
 @sio.event
@@ -30,34 +44,31 @@ def join_chat(sid, message):
     
     print(message.get("name", sid) + " joined to {}".format(message["room"]))
     sio.enter_room(sid, message["room"])
-    users = '\n'.join(name_channel_map.keys())
-    print(users)
-    # sio.emit(
-    #     'show_other_users',
-    #     {
-    #        "users" = users
-    #     },
-    #     room=sid
-    # )
-
 
 
 @sio.event
 def set_client_info(sid, data):
     # Emitted by client to set client information
-    users = '\n'.join(name_channel_map.keys())
-    sid_name_mapping[sid] = data["name"]
-    sid_name_mapping[data["name"]] = sid
-    name_channel_map[data['name']] = create_rabbitmq_connection(data['name'])
-    round_robin_for_sid[sid] = {"sid": -1, "name": data["name"]}
-
-    receiver_channel = name_channel_map[data['name']]
-    payload = {
-        "users" : users
-    }
-    receiver_channel.basic_publish(
-        exchange="", routing_key=data['name'], body=json.dumps(payload)
-    )
+    
+    current_users = '\n'.join(name_channel_map.keys())
+    
+    try:
+        sid_name_mapping[sid] = data["name"]
+        sid_name_mapping[data["name"]] = sid
+        name_channel_map[data['name']] = create_rabbitmq_connection(data['name'])
+        round_robin_for_sid[sid] = {"sid": -1, "name": data["name"]}
+        
+        payload = {
+            "users" : current_users
+        }
+        
+        publish_to_queue(
+            client_name=data['name'],
+            payload=payload
+        )
+        
+    except Exception as e:
+        print(e)
 
 
 @sio.event
@@ -65,16 +76,7 @@ def connect(sid, environ):
     # Get triggered when a new client connects
     
     print("{} connected".format(sid))
-
     sid_list.append(sid)
-    sio.emit(
-        "my_response", 
-        {
-            "data": "Connected", 
-            "count": 0
-        }, 
-        room=sid
-    )
 
 
 @sio.event
@@ -85,71 +87,72 @@ def exit_chat(sid, message):
     sid_list.remove(sid)
 
 
-
 @sio.event
 def message_handler(sid, message):
-    sender = sid_name_mapping[sid]
+    sender = sid_name_mapping.get(sid)
 
     if message["message"] == 'End Session':
         # Ends session between two client
-        
-        print('inside end session')
-        receiver = message_sessions[sender]
+
+        receiver = message_sessions.get(sender)
         message_sessions.pop(sender)
         message_sessions.pop(receiver)
         message["message"] = 'Session Ended'
 
-    elif sid_name_mapping[sid] not in message_sessions.keys():
+    elif sender not in message_sessions.keys():
         # New session starts
         
         idx = get_rr_number(sid)
-        receiver = sid_name_mapping[sid_list[idx]]        
+        receiver = sid_name_mapping.get(sid_list.get(idx))     
         message_sessions[sender] = receiver
         message_sessions[receiver] = sender
         
     else:
         # Previous session continues
         
-        receiver = message_sessions[sender]
+        receiver = message_sessions.get(sender)
     
     message_payload = {
         "sid": sid,
-        "message": message["message"],
+        "message": message.get("message"),
         "sender": sender,
         "receiver": receiver,
-        "room": message["room"],
+        "room": message.get("room"),
     }
-    print("Sending Message ", message_payload)
-    receiver_channel = name_channel_map[receiver]
-    receiver_channel.basic_publish(
-        exchange="", routing_key=receiver, body=json.dumps(message_payload)
-    )
+
+    publish_to_queue(client_name=receiver,payload=message_payload)
 
 
 @sio.event
 def disconnect(sid):
     # Gets triggered when a client disconnects
+    
     try:
         sid_list.remove(sid)
-        client_name = sid_name_mapping[sid]
+        client_name = sid_name_mapping.get(sid)
         name_channel_map.pop(client_name)
         sid_name_mapping.pop(client_name)
         sid_name_mapping.pop(sid)
         round_robin_for_sid.pop(sid)
         print("{} disconnected".format(client_name))
+        
     except Exception as e:
         print(e)
 
+
 def get_rr_number(sid):
     # Returns the next receiver SID using Round Robin
-    
-    end = len(sid_list)
-    start = (round_robin_for_sid[sid]["sid"] + 1) % end
+    try:
+        end = len(sid_list)
+        start = (round_robin_for_sid[sid]["sid"] + 1) % end
 
-    for idx in range(start, end):
-        if sid_list[idx] != sid:
-            round_robin_for_sid[sid]["sid"] = idx
-            return idx
+        for idx in range(start, end):
+            if sid_list[idx] != sid:
+                round_robin_for_sid[sid]["sid"] = idx
+                return idx
+            
+    except Exception as e:
+        print(e)
 
 
 if __name__ == "__main__":
