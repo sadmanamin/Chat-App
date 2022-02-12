@@ -48,6 +48,15 @@ def connect():
 def disconnect():
     # Gets triggered when disconnected from the server
     print("disconnected from server")
+    
+    
+@socket_client.event
+def show_other_users(users):
+    # Emitted from server to show current active users
+    
+    print('Currently active users')
+    for user in users:
+        print('- ',user)
 
 
 def callback_for_received_message(ch, method, properties, body):

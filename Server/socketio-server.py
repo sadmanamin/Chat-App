@@ -47,8 +47,21 @@ def connect(sid, environ):
     # Get triggered when a new client connects
     
     print("{} connected".format(sid))
+    sio.emit(
+        'show_other_users',
+        {
+            "users":name_channel_map.keys()
+        }
+    )
     sid_list.append(sid)
-    sio.emit("my_response", {"data": "Connected", "count": 0}, room=sid)
+    sio.emit(
+        "my_response", 
+        {
+            "data": "Connected", 
+            "count": 0
+        }, 
+        room=sid
+    )
 
 
 @sio.event
