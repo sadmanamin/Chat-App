@@ -29,6 +29,7 @@ def connect():
     # Registers related user information 
     
     print("Server connection established")
+
     socket_client.emit(
         "join_chat", 
         {
@@ -53,21 +54,23 @@ def disconnect():
 @socket_client.event
 def show_other_users(users):
     # Emitted from server to show current active users
-    
-    print('Currently active users')
-    for user in users:
-        print('- ',user)
+    print(users)
 
 
 def callback_for_received_message(ch, method, properties, body):
     # Gets triggered when a new message is consumed
     
     body = json.loads(body)
-    sender = body['sender']
-    message = body['message']
+    sender = body.get('sender')
+    message = body.get('message')
+    users = body.get('users')
 
     if message == 'Session Ended':
         print("{} by {}\nMessage: ".format(message,sender),end="")
+    elif len(users) > 0:
+        print("Current Active Users:\n{}".format(users))
+    elif len(users) == 0:
+        print('No Active Users')
     else:
         print("{} sent: {}\nReply: ".format(sender,message),end="")
         
@@ -119,5 +122,3 @@ if __name__ == "__main__":
     channel.queue_declare(queue=client_name)
     
     start_all_thread(client_name)
-    
-    

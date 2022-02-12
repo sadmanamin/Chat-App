@@ -18,7 +18,7 @@ message_sessions = {}
 
 
 def create_rabbitmq_connection(queue):
-    connection = pika.BlockingConnection(pika.ConnectionParameters(RABBITMQ_HOST))
+    connection = pika.BlockingConnection(pika.ConnectionParameters(RABBITMQ_HOST, heartbeat=600))
     channel1 = connection.channel()
     channel1.queue_declare(queue=queue)
     return channel1
@@ -30,16 +30,34 @@ def join_chat(sid, message):
     
     print(message.get("name", sid) + " joined to {}".format(message["room"]))
     sio.enter_room(sid, message["room"])
+    users = '\n'.join(name_channel_map.keys())
+    print(users)
+    # sio.emit(
+    #     'show_other_users',
+    #     {
+    #        "users" = users
+    #     },
+    #     room=sid
+    # )
+
 
 
 @sio.event
 def set_client_info(sid, data):
     # Emitted by client to set client information
-    
+    users = '\n'.join(name_channel_map.keys())
     sid_name_mapping[sid] = data["name"]
     sid_name_mapping[data["name"]] = sid
     name_channel_map[data['name']] = create_rabbitmq_connection(data['name'])
     round_robin_for_sid[sid] = {"sid": -1, "name": data["name"]}
+
+    receiver_channel = name_channel_map[data['name']]
+    payload = {
+        "users" : users
+    }
+    receiver_channel.basic_publish(
+        exchange="", routing_key=data['name'], body=json.dumps(payload)
+    )
 
 
 @sio.event
@@ -47,12 +65,7 @@ def connect(sid, environ):
     # Get triggered when a new client connects
     
     print("{} connected".format(sid))
-    sio.emit(
-        'show_other_users',
-        {
-            "users":name_channel_map.keys()
-        }
-    )
+
     sid_list.append(sid)
     sio.emit(
         "my_response", 
@@ -116,14 +129,16 @@ def message_handler(sid, message):
 @sio.event
 def disconnect(sid):
     # Gets triggered when a client disconnects
-    
-    sid_list.remove(sid)
-    client_name = sid_name_mapping[sid]
-    name_channel_map.pop(client_name)
-    sid_name_mapping.pop(client_name)
-    sid_name_mapping.pop(sid)
-    round_robin_for_sid.pop(sid)
-    print("{} disconnected".format(client_name))
+    try:
+        sid_list.remove(sid)
+        client_name = sid_name_mapping[sid]
+        name_channel_map.pop(client_name)
+        sid_name_mapping.pop(client_name)
+        sid_name_mapping.pop(sid)
+        round_robin_for_sid.pop(sid)
+        print("{} disconnected".format(client_name))
+    except Exception as e:
+        print(e)
 
 def get_rr_number(sid):
     # Returns the next receiver SID using Round Robin
