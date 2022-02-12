@@ -8,19 +8,27 @@ import socketio
 SERVER_URL = "http://localhost:5000"
 RABBITMQ_SERVER = 'localhost'
 
-socket_client = socketio.Client()
+try:
+    socket_client = socketio.Client()
 
-connection = pika.BlockingConnection(
-    pika.ConnectionParameters(RABBITMQ_SERVER, heartbeat=600)
-)
-channel = connection.channel()
+    connection = pika.BlockingConnection(
+        pika.ConnectionParameters(RABBITMQ_SERVER, heartbeat=600)
+    )
+    channel = connection.channel()
+    
+except Exception as e:
+    print(e)
 
 
 def connect_to_server():
     # Connects to the message server
     
-    socket_client.connect(SERVER_URL)
-    socket_client.wait()
+    try:
+        socket_client.connect(SERVER_URL)
+        socket_client.wait()
+    
+    except Exception as e:
+        print(e)
 
 
 @socket_client.event
@@ -30,31 +38,30 @@ def connect():
     
     print("Server connection established")
 
-    socket_client.emit(
-        "join_chat", 
-        {
-            "room": client_name, 
-            "name": client_name
-        }
-    )
-    socket_client.emit(
-        "set_client_info", 
-        {
-            "name": client_name
-        }
-    )
+    try:
+        socket_client.emit(
+            "join_chat", 
+            {
+                "room": client_name, 
+                "name": client_name
+            }
+        )
+        socket_client.emit(
+            "set_client_info", 
+            {
+                "name": client_name
+            }
+        )
+    
+    except Exception as e:
+        print(e)
  
    
 @socket_client.event
 def disconnect():
     # Gets triggered when disconnected from the server
+    
     print("disconnected from server")
-    
-    
-@socket_client.event
-def show_other_users(users):
-    # Emitted from server to show current active users
-    print(users)
 
 
 def callback_for_received_message(ch, method, properties, body):
@@ -65,25 +72,33 @@ def callback_for_received_message(ch, method, properties, body):
     message = body.get('message')
     users = body.get('users')
 
-    if message == 'Session Ended':
-        print("{} by {}\nMessage: ".format(message,sender),end="")
-    elif len(users) > 0:
-        print("Current Active Users:\n{}".format(users))
-    elif len(users) == 0:
-        print('No Active Users')
-    else:
-        print("{} sent: {}\nReply: ".format(sender,message),end="")
+    try:
+        if message == 'Session Ended':
+            print("{} by {}\nMessage: ".format(message,sender),end="")
+        elif len(users) > 0:
+            print("Current Active Users:\n{}".format(users))
+        elif len(users) == 0:
+            print('No Active Users')
+        else:
+            print("{} sent: {}\nReply: ".format(sender,message),end="")
+    
+    except Exception as e:
+        print(e)
         
         
 def consume_message(client_name):
     # Consumes new messages that get push to the queue
     
-    channel.basic_consume(
-        queue=client_name, 
-        auto_ack=True, 
-        on_message_callback=callback_for_received_message
-    )
-    channel.start_consuming()
+    try:
+        channel.basic_consume(
+            queue=client_name, 
+            auto_ack=True, 
+            on_message_callback=callback_for_received_message
+        )
+        channel.start_consuming()
+        
+    except Exception as e:
+        print(e)
 
 
 def send_message(client_name):
@@ -91,16 +106,19 @@ def send_message(client_name):
     
     while True:
         sleep(1)
-
-        msg = input("Message: ")
-        socket_client.emit(
-            "message_handler",
-            {
-                "message": msg,
-                "name": client_name,
-                "room": client_name
-            },
-        )
+        try:
+            msg = input("Message: ")
+            socket_client.emit(
+                "message_handler",
+                {
+                    "message": msg,
+                    "name": client_name,
+                    "room": client_name
+                },
+            )
+            
+        except Exception as e:
+            print(e)
 
         
 def start_all_thread(client_name):
