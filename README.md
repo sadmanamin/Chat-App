@@ -12,7 +12,7 @@ Start docker containers of Server
 
 ```
 cd Server
-docker-compose up --build
+docker-compose up -d --build
 cd ..
 ```
 
